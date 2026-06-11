@@ -94,11 +94,25 @@ function fileToBase64(file) {
 }
 
 // ─── API ───────────────────────────────────────────────────────────────────
+const getAuthHeaders = (extra = {}) => {
+  const token = localStorage.getItem("vigil_token");
+  return { ...extra, "X-Auth-Token": token || "" };
+};
+
 const api = {
+  login: async (username, password) => {
+    const r = await fetch(`${API_BASE}/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password })
+    });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  },
   searchByFace: async (file) => {
     const fd = new FormData();
     fd.append("file", file);
-    const r = await fetch(`${API_BASE}/search-by-face`, { method: "POST", body: fd });
+    const r = await fetch(`${API_BASE}/search-by-face`, { method: "POST", body: fd, headers: getAuthHeaders() });
     if (!r.ok) throw new Error(await r.text());
     return r.json();
   },
@@ -108,14 +122,14 @@ const api = {
     if (dateTo) body.date_to = dateTo;
     const r = await fetch(`${API_BASE}/search`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: getAuthHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(body),
     });
     if (!r.ok) throw new Error(await r.text());
     return r.json();
   },
   getAllPhotos: async () => {
-    const r = await fetch(`${API_BASE}/photos?status=done`);
+    const r = await fetch(`${API_BASE}/photos?status=done`, { headers: getAuthHeaders() });
     if (!r.ok) throw new Error(await r.text());
     return r.json();
   },
@@ -127,36 +141,36 @@ const api = {
     );
   },
   getAlerts: async () => {
-    const r = await fetch(`${API_BASE}/alerts`);
+    const r = await fetch(`${API_BASE}/alerts`, { headers: getAuthHeaders() });
     if (!r.ok) throw new Error(await r.text());
     return r.json();
   },
   markAlertSeen: async (id) => {
-    const r = await fetch(`${API_BASE}/alerts/${id}/seen`, { method: "PATCH" });
+    const r = await fetch(`${API_BASE}/alerts/${id}/seen`, { method: "PATCH", headers: getAuthHeaders() });
     if (!r.ok) throw new Error(await r.text());
     return r.json();
   },
   getGeofences: async () => {
-    const r = await fetch(`${API_BASE}/geofences`);
+    const r = await fetch(`${API_BASE}/geofences`, { headers: getAuthHeaders() });
     if (!r.ok) throw new Error(await r.text());
     return r.json();
   },
   createGeofence: async (payload) => {
     const r = await fetch(`${API_BASE}/geofences`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: getAuthHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(payload),
     });
     if (!r.ok) throw new Error(await r.text());
     return r.json();
   },
   deleteGeofence: async (id) => {
-    const r = await fetch(`${API_BASE}/geofences/${id}`, { method: "DELETE" });
+    const r = await fetch(`${API_BASE}/geofences/${id}`, { method: "DELETE", headers: getAuthHeaders() });
     if (!r.ok) throw new Error(await r.text());
     return r.json();
   },
   checkGeofences: async () => {
-    const r = await fetch(`${API_BASE}/geofences/check`, { method: "POST" });
+    const r = await fetch(`${API_BASE}/geofences/check`, { method: "POST", headers: getAuthHeaders() });
     if (!r.ok) throw new Error(await r.text());
     return r.json();
   },
@@ -1286,7 +1300,68 @@ const TABS = [
   { id: "alerts",   label: "Alerts",    Icon: Icon.Bell     },
 ];
 
+function Login({ onLogin }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setErr("");
+    setLoading(true);
+    try {
+      console.log()
+      const res = await api.login(username, password);
+      onLogin(res.token);
+    } catch (error) {
+      try {
+        console.log(error.message);
+        const p = JSON.parse(error.message);
+        setErr(p.error || "Login failed");
+      } catch {
+        setErr("Invalid credentials or server error");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#080d14", fontFamily: "'IBM Plex Mono','Courier New',monospace", color: "#e2e8f0" }}>
+      <div style={{ background: "#111827", padding: "40px 30px", borderRadius: 16, border: "1px solid #1f2937", width: 340, display: "flex", flexDirection: "column", gap: 20, boxShadow: "0 10px 25px rgba(0,0,0,0.5)" }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+            <Icon.Crosshair style={{ width: 28, height: 28, color: "#e53e3e" }} />
+          </div>
+          <div style={{ fontWeight: 700, fontSize: 18, color: "#e2e8f0", letterSpacing: 3 }}>VIGIL</div>
+          <div style={{ fontSize: 10, color: "#9ca3af", letterSpacing: 2, marginTop: 4 }}>INTEL PLATFORM</div>
+          <div style={{ fontSize: 16, color: "#9ca3af", letterSpacing: 2, marginTop: 4 }}>Ask admin for credentials</div>
+        </div>
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {err && <div style={{ background: "#2d1515", border: "1px solid #7f1d1d", color: "#fca5a5", fontSize: 12, padding: "8px 12px", borderRadius: 6, textAlign: "center" }}>{err}</div>}
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <label style={{ fontSize: 11, color: "#9ca3af" }}>USER IDENTIFIER</label>
+            <input value={username} onChange={e => setUsername(e.target.value)} type="text"
+              style={{ background: "#1f2937", border: "1px solid #374151", padding: "10px 12px", borderRadius: 8, color: "#e2e8f0", outline: "none", fontSize: 14 }} required />
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <label style={{ fontSize: 11, color: "#9ca3af" }}>ACCESS KEY</label>
+            <input value={password} onChange={e => setPassword(e.target.value)} type="password"
+              style={{ background: "#1f2937", border: "1px solid #374151", padding: "10px 12px", borderRadius: 8, color: "#e2e8f0", outline: "none", fontSize: 14 }} required />
+          </div>
+          <button type="submit" disabled={loading}
+            style={{ background: "#f6ad10", color: "#000", border: "none", padding: "12px", borderRadius: 8, fontWeight: 700, fontSize: 14, marginTop: 8, cursor: loading ? "default" : "pointer", transition: "all 0.15s" }}>
+            {loading ? "AUTHENTICATING..." : "ESTABLISH CONNECTION"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
+  const [token, setToken] = useState(() => localStorage.getItem("vigil_token"));
   const [tab, setTab] = useState("search");
   const [page, setPage] = useState("main"); // "main" | "person"
   const [allPhotos, setAllPhotos] = useState([]);
@@ -1302,12 +1377,25 @@ export default function App() {
   const [alertCount, setAlertCount] = useState(0);
 
   useEffect(() => {
+    if (!token) return;
     api.getAllPhotos().then(setAllPhotos).catch(() => { }).finally(() => setGalleryLoading(false));
     const pollAlerts = () => api.getAlerts().then(as => setAlertCount(as.filter(a => a.status !== "seen").length)).catch(() => { });
     pollAlerts();
     const iv = setInterval(pollAlerts, 300000);
     return () => clearInterval(iv);
-  }, []);
+  }, [token]);
+
+  const handleLogin = (t) => {
+    localStorage.setItem("vigil_token", t);
+    setToken(t);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("vigil_token");
+    setToken(null);
+  };
+
+  if (!token) return <Login onLogin={handleLogin} />;
 
   const handleSearch = async ({ text, image, dateFrom, dateTo }) => {
     setSearchLoading(true); setSearchErr(null); setSearched(true);
@@ -1371,6 +1459,7 @@ export default function App() {
           <span style={{ fontSize: 9, color: "#374151", letterSpacing: 2 }}>INTEL PLATFORM</span>
         </div>
         {TABS.map(t => {
+          if (token === "testuser" && t.id !== "search") return null;
           const active = tab === t.id && page === "main";
           const isAlert = t.id === "alerts";
           return (
@@ -1384,9 +1473,10 @@ export default function App() {
             </button>
           );
         })}
-        <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
           <Pill label={`${allPhotos.length} indexed`} color="#4ade80" />
           {searched && <Pill label={`${results.length} results`} color="#f6ad10" />}
+          <button onClick={handleLogout} style={{ background: "none", border: "none", color: "#9ca3af", fontSize: 11, fontFamily: "monospace", cursor: "pointer", marginLeft: 10, padding: "4px 8px", border: "1px solid #374151", borderRadius: 6 }}>LOGOUT</button>
         </div>
       </nav>
 
